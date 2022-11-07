@@ -1,0 +1,17 @@
+server:
+  servlet:
+    encoding:
+      enabled: true
+      force: true
+      charset: UTF-8
+source:
+  sourceList:
+    - name: "maoFly"
+      url: "https://www.maofly.com"
+      classPath: "com.shijivk.todokireader.source.MaoFly"
+      valid: true
+    - name: "maoFly2"
+      url: "https://www.maofly.com"
+      classPath: "com.shijivk.todokireader.source.MaoFly2"
+      valid: false
+cachePath: "D:\temp"
