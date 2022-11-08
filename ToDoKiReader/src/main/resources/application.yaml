@@ -13,5 +13,6 @@ source:
     - name: "maoFly2"
       url: "https://www.maofly.com"
       classPath: "com.shijivk.todokireader.source.MaoFly2"
-      valid: false
-cachePath: "D:\temp"
+      valid: true
+cachePath: "D:\\temp"
+driverPath: "C:\\Driver\\chromedriver.exe"

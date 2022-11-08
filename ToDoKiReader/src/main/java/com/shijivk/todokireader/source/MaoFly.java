@@ -4,9 +4,11 @@ package com.shijivk.todokireader.source;
 import com.shijivk.todokireader.config.MQCode;
 import com.shijivk.todokireader.config.ThreadPoolConfig;
 import com.shijivk.todokireader.config.WebDriverPoolConfig;
+import com.shijivk.todokireader.pojo.CacheInfo;
 import com.shijivk.todokireader.pojo.Menu;
 import com.shijivk.todokireader.pojo.SearchResult;
 import com.shijivk.todokireader.utils.ImgDownloder;
+import com.shijivk.todokireader.utils.PathUtil;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.openqa.selenium.By;
@@ -29,14 +31,14 @@ public class MaoFly implements MangaSource{
 
     public static class ImgUrlGetter implements Runnable{
 
-        private Map<File,Integer> messageQueue;
+        private Map<String, CacheInfo> messageQueue;
         private String chapterUrl;
         private String cachePath;
         private int titleNumber;
         private int chapterNumber;
 
 
-        public void setParam(Map<File,Integer> messageQueue,String url, String cachePath, int titleNumber, int chapterNumber){
+        public void setParam(Map<String,CacheInfo> messageQueue,String url, String cachePath, int titleNumber, int chapterNumber){
             this.messageQueue = messageQueue;
             this.chapterUrl = url;
             this.cachePath = cachePath;
@@ -109,9 +111,9 @@ public class MaoFly implements MangaSource{
                         .perform();
             }
             //放置结束标记
-            File endImage = new File(cachePath + File.separator + titleNumber
-                    + File.separator + chapterNumber + File.separator + i + "." + extension);
-            messageQueue.put(endImage, MQCode.CHAPTER_OVER);
+            //获取格式形如100/100/1的key  /标题序号/章节序号/图片序号
+            String key = PathUtil.getPathKey(titleNumber,chapterNumber,i);
+            messageQueue.put(key, new CacheInfo(MQCode.CHAPTER_OVER,extension));
 
             //归还driver
             pool.returnObject(driver);
@@ -215,7 +217,7 @@ public class MaoFly implements MangaSource{
     }
 
     @Override
-    public int getAmountAndStartDownload(Map<File,Integer> messageQueue, String url, String cachePath, int titleNumber, int chapterNumber) {
+    public int getAmountAndStartDownload(Map<String,CacheInfo> messageQueue, String url, String cachePath, int titleNumber, int chapterNumber) {
         //拿图片，放到指定的位置
         ImgUrlGetter imgUrlGetter = new ImgUrlGetter();
         imgUrlGetter.setParam(messageQueue,url,cachePath,titleNumber,chapterNumber);

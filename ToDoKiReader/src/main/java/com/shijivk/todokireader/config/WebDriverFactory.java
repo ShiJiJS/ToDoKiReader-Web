@@ -8,6 +8,10 @@ import org.openqa.selenium.PageLoadStrategy;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.yaml.snakeyaml.Yaml;
+
+import java.io.InputStream;
+import java.util.Map;
 
 
 //需要更改地址变量，将其提出
@@ -15,8 +19,15 @@ public class WebDriverFactory extends BasePooledObjectFactory<WebDriver> {
 
     @Override
     public WebDriver create() throws Exception {
+        //获取driver地址
+        Yaml yaml = new Yaml();
+        InputStream stream = this.getClass().getClassLoader().getResourceAsStream("application.yaml");
+
+        Map<String, Object> ret = yaml.load(stream);
+        String driverPath = (String)ret.get("driverPath");
+
         //设置本地chromedriver地址
-        System.setProperty("webdriver.chrome.driver", "C:\\Driver\\chromedriver.exe");
+        System.setProperty("webdriver.chrome.driver", driverPath);
 
         //创建无Chrome无头参数
         ChromeOptions chromeOptions=new ChromeOptions();

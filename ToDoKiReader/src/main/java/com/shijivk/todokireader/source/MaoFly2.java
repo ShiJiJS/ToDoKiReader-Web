@@ -1,12 +1,14 @@
 package com.shijivk.todokireader.source;
 
 
+import com.shijivk.todokireader.config.MQCode;
 import com.shijivk.todokireader.config.ThreadPoolConfig;
 import com.shijivk.todokireader.config.WebDriverPoolConfig;
+import com.shijivk.todokireader.pojo.CacheInfo;
 import com.shijivk.todokireader.pojo.Menu;
 import com.shijivk.todokireader.pojo.SearchResult;
 import com.shijivk.todokireader.utils.ImgDownloder;
-import com.shijivk.todokireader.utils.SpringUtil;
+import com.shijivk.todokireader.utils.PathUtil;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.openqa.selenium.By;
@@ -15,13 +17,11 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
-import org.springframework.stereotype.Component;
 
 
 import java.io.File;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.ThreadPoolExecutor;
 
 //@Component("maoFly")
 public class MaoFly2 implements MangaSource{
@@ -31,14 +31,14 @@ public class MaoFly2 implements MangaSource{
 
     public static class ImgUrlGetter implements Runnable{
 
-        private Map<File,Integer> messageQueue;
+        private Map<String, CacheInfo> messageQueue;
         private String chapterUrl;
         private String cachePath;
         private int titleNumber;
         private int chapterNumber;
 
 
-        public void setParam(Map<File,Integer> messageQueue,String url, String cachePath, int titleNumber, int chapterNumber){
+        public void setParam(Map<String,CacheInfo> messageQueue,String url, String cachePath, int titleNumber, int chapterNumber){
             this.messageQueue = messageQueue;
             this.chapterUrl = url;
             this.cachePath = cachePath;
@@ -72,7 +72,9 @@ public class MaoFly2 implements MangaSource{
             //存储已经交给downloder的图片
             //两个参数分别为url和图片名
             HashSet<String> imageUrls = new HashSet<>();
+            String extension = null;//图片扩展名
 
+            int i = 1;//给文件名计数用的变量
             while(isLoading){
                 String style = loading.getAttribute("style");
                 if(!style.equals("display: none;")){
@@ -86,15 +88,16 @@ public class MaoFly2 implements MangaSource{
                 //查看是否有新的图片被加载了出来，如果有就放入map并交给downloder处理
                 WebElement imgContent = driver.findElement(By.className("img-content"));
                 List<WebElement> imgs = imgContent.findElements(By.cssSelector("img"));
-                int i = 1;//给文件名计数用的变量
+
                 for (WebElement img : imgs) {
                     String imgUrl = img.getAttribute("src");
                     if (!imageUrls.contains(imgUrl)){
                         //放入map
                         imageUrls.add(imgUrl);
                         //获得文件存放路径
-                        File image = new File(cachePath + File.pathSeparator + titleNumber
-                                + File.pathSeparator + chapterNumber + File.pathSeparator + i++ + "." + FilenameUtils.getExtension(imgUrl));
+                        extension = FilenameUtils.getExtension(imgUrl);
+                        File image = new File(cachePath + File.separator + titleNumber
+                                + File.separator + chapterNumber + File.separator + i++ + "." + extension);
                         ImgDownloder imgDownloder = new ImgDownloder();
                         imgDownloder.setParam(imgUrl,image,messageQueue);
                         ThreadPoolConfig.execute(imgDownloder);
@@ -107,6 +110,10 @@ public class MaoFly2 implements MangaSource{
                         .scrollByAmount(0, deltaY)
                         .perform();
             }
+            //放置结束标记
+            //获取格式形如100/100/1的key  /标题序号/章节序号/图片序号
+            String key = PathUtil.getPathKey(titleNumber,chapterNumber,i);
+            messageQueue.put(key, new CacheInfo(MQCode.CHAPTER_OVER,extension));
 
             //归还driver
             pool.returnObject(driver);
@@ -210,7 +217,7 @@ public class MaoFly2 implements MangaSource{
     }
 
     @Override
-    public int getAmountAndStartDownload(Map<File,Integer> messageQueue, String url, String cachePath, int titleNumber, int chapterNumber) {
+    public int getAmountAndStartDownload(Map<String,CacheInfo> messageQueue, String url, String cachePath, int titleNumber, int chapterNumber) {
         //拿图片，放到指定的位置
         ImgUrlGetter imgUrlGetter = new ImgUrlGetter();
         imgUrlGetter.setParam(messageQueue,url,cachePath,titleNumber,chapterNumber);
