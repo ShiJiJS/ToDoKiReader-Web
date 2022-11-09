@@ -43,14 +43,14 @@
       <article class="chapter-select">
         <h4>章节选择</h4>
         <div class="chapter-cart">
-          <a
-            :href="value"
+          <button
+            @click="toOnlineRead(value, key)"
             role="button"
             class="secondary outline"
             v-for="(value, key, index) in menuInfo.chapters"
             :key="index">
             {{ key }}
-          </a>
+          </button>
         </div>
       </article>
     </div>
@@ -76,6 +76,21 @@ export default {
         _this.menuInfo = response.data.data;
       });
     },
+
+    toOnlineRead(url, chapter) {
+      var _this = this;
+      console.log(chapter);
+      this.$router.push({
+        path: "/onlineRead",
+        name: "onlineReadPage",
+        params: {
+          url: url,
+          title: _this.menuInfo.title,
+          chapter: chapter,
+          sourceName: _this.sourceName,
+        },
+      });
+    },
   },
   data() {
     return {
@@ -90,6 +105,18 @@ export default {
   },
   mounted() {
     this.getMenuInfo();
+  },
+  //判定是否进行了路由切换，如果切换了就重新更新一下页面
+  watch: {
+    "$route.params.url": {
+      handler(newVal) {
+        if (newVal != undefined) {
+          this.url = this.$route.params.url;
+          this.sourceName = this.$route.params.sourceName;
+          this.getMenuInfo();
+        }
+      },
+    },
   },
 };
 </script>
@@ -112,7 +139,7 @@ export default {
 img {
   height: 100%;
 }
-.chapter-cart a {
+.chapter-cart button {
   width: 230px;
   margin-right: 10px;
   margin-bottom: 10px;

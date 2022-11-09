@@ -1,7 +1,8 @@
 import axios from "axios";
+import requestConst from "../const/requestConst";
 
 var request = axios.create({
-  baseURL: "http://localhost:8080",
+  baseURL: requestConst.baseURL,
 });
 
 export default request;

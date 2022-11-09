@@ -10,9 +10,9 @@ source:
       url: "https://www.maofly.com"
       classPath: "com.shijivk.todokireader.source.MaoFly"
       valid: true
-    - name: "maoFly2"
-      url: "https://www.maofly.com"
-      classPath: "com.shijivk.todokireader.source.MaoFly2"
-      valid: true
+#    - name: "maoFly2"
+#      url: "https://www.maofly.com"
+#      classPath: "com.shijivk.todokireader.source.MaoFly2"
+#      valid: true
 cachePath: "D:\\temp"
 driverPath: "C:\\Driver\\chromedriver.exe"

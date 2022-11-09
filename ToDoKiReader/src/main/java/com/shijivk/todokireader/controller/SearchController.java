@@ -100,6 +100,7 @@ public class SearchController{
         String title = params.getString("title");
         String chapter = params.getString("chapter");
         String url = params.getString("url");
+        String sourceName = params.getString("sourceName");
 
         //存储title,chapter和Integer的映射关系
         int currentTitleNumber = titleNumber.getAndIncrement();
@@ -107,7 +108,7 @@ public class SearchController{
         titleMap.put(currentTitleNumber,title);
         chapterMap.put(currentChapterNumber,chapter);
 
-        Class<?> sourceClass = this.sourceProps.getSourceClass(params.getString("sourceName"));
+        Class<?> sourceClass = this.sourceProps.getSourceClass(sourceName);
         if(sourceClass == null)return Result.fail("获取类对象失败");
 
         try {
@@ -133,7 +134,8 @@ public class SearchController{
         CacheInfo cacheInfo = messageQueue.get(PathUtil.getPathKey(titleNum, chapterNum, imgNum));
         while(cacheInfo==null){
             try {
-                if (System.currentTimeMillis() - startWaitingTime > 1000){
+                //等待十秒
+                if (System.currentTimeMillis() - startWaitingTime > 10000){
                     //虽然请求失败了，但是为了将参数写在data里面，用success返回
                     JSONObject overTimeResult = new JSONObject();
                     overTimeResult.put("code",MQCode.IMG_GET_OVERTIME);

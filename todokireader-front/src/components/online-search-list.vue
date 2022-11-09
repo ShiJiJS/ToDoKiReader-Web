@@ -53,6 +53,18 @@ export default {
   mounted() {
     this.onlineSearch();
   },
+  watch: {
+    "$route.params.searchContent": {
+      handler(newVal) {
+        if (newVal != undefined) {
+          this.searchContent = this.$route.params.searchContent;
+          this.sources = this.$route.params.sources;
+          this.searchResults = [];
+          this.onlineSearch();
+        }
+      },
+    },
+  },
 };
 </script>
 
