@@ -31,6 +31,7 @@ export default {
         _this.amount = response.data.data.amount;
         _this.titleNumber = response.data.data.titleNumber;
         _this.chapterNumber = response.data.data.chapterNumber;
+        _this.fileExtension = response.data.data.fileExtension;
         this.getImages();
       });
     },
@@ -38,37 +39,20 @@ export default {
     async getImages() {
       if (this.amount == -1) {
         //图片数量未知，依次获取
-        var _this = this;
-        for (var i = 0; ; i++) {
-          //阻塞获取图片
+        let _this = this;
+        for (let i = 1; ; i++) {
+          //阻塞检查图片是否缓存完成
           const response = await request({
-            url:
-              "/api/checkImgStatus/" +
-              _this.titleNumber +
-              "/" +
-              _this.chapterNumber +
-              "/" +
-              i,
+            url: "/api/checkImgStatus/" + _this.titleNumber + "/" + _this.chapterNumber + "/" + i + "." + _this.fileExtension,
             method: "get",
           });
           //判断code
-          var code = response.data.data.code;
+          let code = response.data.data.code;
           if (code == requestConst.IMG_GET_OK) {
             //成功拿到图片
-            var fileExtension = response.data.data.fileExtension;
             //向imageList中添加url
-            _this.imageList.push(
-              requestConst.baseURL +
-                "/" +
-                "temp" +
-                "/" +
-                _this.titleNumber +
-                "/" +
-                _this.chapterNumber +
-                "/" +
-                i +
-                "." +
-                fileExtension
+            this.imageList.push(
+              requestConst.baseURL + "/" + "temp" + "/" + this.titleNumber + "/" + this.chapterNumber + "/" + i + "." + this.fileExtension
             );
           } else if (code == requestConst.CHAPTER_OVER) {
             //章节结束
@@ -80,9 +64,27 @@ export default {
         }
       } else if (this.amount != 0) {
         //如果数量可以确定
-        console.log("还没完成");
+        for (let i = 1; i <= this.amount; i++) {
+          //阻塞等待图片缓存完成
+          const response = await request({
+            url: "/api/checkImgStatus/" + this.titleNumber + "/" + this.chapterNumber + "/" + i + "." + this.fileExtension,
+            method: "get",
+          });
+          //判断code
+          let code = response.data.data.code;
+          if (code == requestConst.IMG_GET_OK) {
+            //成功拿到图片
+            //向imageList中添加url
+            this.imageList.push(
+              requestConst.baseURL + "/" + "temp" + "/" + this.titleNumber + "/" + this.chapterNumber + "/" + i + "." + this.fileExtension
+            );
+          } else if (code == requestConst.IMG_GET_OVERTIME) {
+            //超时
+            continue; //继续下一张
+          }
+        }
       } else {
-        console.log("图片获取错误");
+        console.log("该页无图片");
       }
     },
   },
@@ -96,6 +98,7 @@ export default {
       titleNumber: 0,
       chapterNumber: 0,
       imageList: [],
+      fileExtension: "",
     };
   },
   created() {
@@ -106,6 +109,21 @@ export default {
   },
   mounted() {
     this.getAmount();
+  },
+
+  watch: {
+    "$route.params.chapter": {
+      handler(newVal) {
+        if (newVal != undefined) {
+          this.url = this.$route.params.url;
+          this.title = this.$route.params.title;
+          this.chapter = this.$route.params.chapter;
+          this.sourceName = this.$route.params.sourceName;
+          this.imageList = [];
+          this.getAmount();
+        }
+      },
+    },
   },
 };
 </script>

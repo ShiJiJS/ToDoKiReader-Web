@@ -11,6 +11,7 @@ import org.openqa.selenium.chrome.ChromeOptions;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.Map;
 
 
@@ -31,11 +32,14 @@ public class WebDriverFactory extends BasePooledObjectFactory<WebDriver> {
 
         //创建无Chrome无头参数
         ChromeOptions chromeOptions=new ChromeOptions();
-        chromeOptions.addArguments("-headless");
+        //chromeOptions.addArguments("-headless");
         chromeOptions.setPageLoadStrategy(PageLoadStrategy.EAGER);
 
         //创建Driver实例
-        return new ChromeDriver(chromeOptions);
+        ChromeDriver chromeDriver = new ChromeDriver(chromeOptions);
+        //增加隐式等待时间
+        chromeDriver.manage().timeouts().implicitlyWait(Duration.ofSeconds(20));
+        return chromeDriver;
     }
 
     @Override

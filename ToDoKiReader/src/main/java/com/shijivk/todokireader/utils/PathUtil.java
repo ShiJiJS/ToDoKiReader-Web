@@ -15,7 +15,11 @@ public class PathUtil {
         return filePath.substring(startIndex, endIndex);
     }
 
-    public static String getPathKey(Integer titleNumber,Integer chapterNumber,Integer imageIndex){
-        return new String(titleNumber + File.separator + chapterNumber + File.separator + imageIndex);
+    public static String getPathKey(String title,String chapter,Integer imageIndex){
+        return new String(title + File.separator + chapter + File.separator + imageIndex);
+    }
+
+    public static String getPathKey(String title,String chapter){
+        return new String(title + File.separator + chapter);
     }
 }

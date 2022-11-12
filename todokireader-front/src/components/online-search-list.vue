@@ -27,7 +27,8 @@ export default {
       //向每个源都发送一个请求
       this.sources.forEach((source) => {
         var _this = this;
-        var searchUrl = "/api/search/" + source.name + "/" + this.searchContent;
+        //页码目前默认给第一页。后面需要进行调整
+        var searchUrl = "/api/search/" + source.name + "/" + this.searchContent + "/" + 1;
         request({
           url: searchUrl,
           method: "get",

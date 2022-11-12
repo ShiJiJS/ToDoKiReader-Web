@@ -4,11 +4,11 @@ package com.shijivk.todokireader.source;
 import com.shijivk.todokireader.config.MQCode;
 import com.shijivk.todokireader.config.ThreadPoolConfig;
 import com.shijivk.todokireader.config.WebDriverPoolConfig;
-import com.shijivk.todokireader.pojo.CacheInfo;
 import com.shijivk.todokireader.pojo.Menu;
 import com.shijivk.todokireader.pojo.SearchResult;
 import com.shijivk.todokireader.utils.ImgDownloder;
 import com.shijivk.todokireader.utils.PathUtil;
+import javafx.util.Pair;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.openqa.selenium.By;
@@ -29,21 +29,23 @@ public class MaoFly implements MangaSource{
 
     private static final String sourceName = "maoFly";
 
+    private static final String fileExtension = "jpg";
+
     public static class ImgUrlGetter implements Runnable{
 
-        private Map<String, CacheInfo> messageQueue;
+        private Map<String, Integer> messageQueue;
         private String chapterUrl;
         private String cachePath;
-        private int titleNumber;
-        private int chapterNumber;
+        private String title;
+        private String chapter;
 
 
-        public void setParam(Map<String,CacheInfo> messageQueue,String url, String cachePath, int titleNumber, int chapterNumber){
+        public void setParam(Map<String,Integer> messageQueue,String url, String cachePath, String title, String chapter){
             this.messageQueue = messageQueue;
             this.chapterUrl = url;
             this.cachePath = cachePath;
-            this.titleNumber = titleNumber;
-            this.chapterNumber = chapterNumber;
+            this.title = title;
+            this.chapter = chapter;
         }
 
         @Override
@@ -74,6 +76,10 @@ public class MaoFly implements MangaSource{
             HashSet<String> imageUrls = new HashSet<>();
             String extension = null;//图片扩展名
 
+            //在队列中放置开始标志
+            //内容为章节名称/标题名称  START
+            messageQueue.put(PathUtil.getPathKey(title,chapter), MQCode.CHAPTER_START);
+
             int i = 1;//给文件名计数用的变量
             while(isLoading){
                 String style = loading.getAttribute("style");
@@ -96,8 +102,8 @@ public class MaoFly implements MangaSource{
                         imageUrls.add(imgUrl);
                         //获得文件存放路径
                         extension = FilenameUtils.getExtension(imgUrl);
-                        File image = new File(cachePath + File.separator + titleNumber
-                                + File.separator + chapterNumber + File.separator + i++ + "." + extension);
+                        File image = new File(cachePath + File.separator + title
+                                + File.separator + chapter + File.separator + i++ + "." + extension);
                         ImgDownloder imgDownloder = new ImgDownloder();
                         imgDownloder.setParam(imgUrl,image,messageQueue);
                         ThreadPoolConfig.execute(imgDownloder);
@@ -111,9 +117,9 @@ public class MaoFly implements MangaSource{
                         .perform();
             }
             //放置结束标记
-            //获取格式形如100/100/1的key  /标题序号/章节序号/图片序号
-            String key = PathUtil.getPathKey(titleNumber,chapterNumber,i);
-            messageQueue.put(key, new CacheInfo(MQCode.CHAPTER_OVER,extension));
+            //获取格式形如/标题名/章节名/图片序号的key  /标题名/章节名/图片序号
+            String key = PathUtil.getPathKey(title,chapter,i);
+            messageQueue.put(key, MQCode.CHAPTER_OVER);
 
             //归还driver
             pool.returnObject(driver);
@@ -121,7 +127,7 @@ public class MaoFly implements MangaSource{
     }
 
     @Override
-    public List<SearchResult> search(String content) {
+    public List<SearchResult> search(String content,Integer pageNumber) {
         //从池中获取驱动，根据输入结果查询
         GenericObjectPool<WebDriver> pool = WebDriverPoolConfig.getPool();
         WebDriver driver = null;
@@ -133,7 +139,7 @@ public class MaoFly implements MangaSource{
         }
 
 
-        driver.get("https://www.maofly.com/search.html?q=" + content);
+        driver.get("https://www.maofly.com/search.html?q=" + content + "&page=" + pageNumber);
         //拿到外部div
         List<WebElement> elements = driver.findElements(By.className("comicbook-index"));
         //搜索结果的List
@@ -141,7 +147,7 @@ public class MaoFly implements MangaSource{
 
 
         //等待图片加载完成，依次遍历装入List
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(3));
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
         for (WebElement element : elements) {
             //获取图片Url
             WebElement img = element.findElement(By.cssSelector("img"));
@@ -175,8 +181,12 @@ public class MaoFly implements MangaSource{
             return null;
         }
         driver.get(url);
+
+
+
         //获取标题
-        String title = driver.findElement(By.className("comic-title")).getText();
+        WebElement titleElement = new WebDriverWait(driver, Duration.ofSeconds(10)).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".comic-info h1")));
+        String title = titleElement.getText();
         //获取作者
         String author = driver.findElement(By.className("pub-duration"))
                                 .findElement(By.cssSelector("a"))
@@ -217,77 +227,77 @@ public class MaoFly implements MangaSource{
     }
 
     @Override
-    public int getAmountAndStartDownload(Map<String,CacheInfo> messageQueue, String url, String cachePath, int titleNumber, int chapterNumber) {
+    public Pair<Integer,String> getAmountAndStartDownload(Map<String,Integer> messageQueue, String url, String cachePath, String title, String chapter) {
         //拿图片，放到指定的位置
         ImgUrlGetter imgUrlGetter = new ImgUrlGetter();
-        imgUrlGetter.setParam(messageQueue,url,cachePath,titleNumber,chapterNumber);
+        imgUrlGetter.setParam(messageQueue,url,cachePath,title,chapter);
         ThreadPoolConfig.execute(imgUrlGetter);
 
         //拿不到amount
-        return -1;
+        return new Pair<>(-1,fileExtension);
     }
 
 
 
 
-    @Override
-    public LinkedHashMap<String, String> getImages(String url) {
-        //从池中获取驱动，根据输入结果查询
-        GenericObjectPool<WebDriver> pool = WebDriverPoolConfig.getPool();
-        WebDriver driver = null;
-        try {
-            driver = pool.borrowObject();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-
-        driver.get(url);
-        //点击下拉式按钮
-        driver.findElement(By.className("btn-def")).click();
-
-        //获取页脚位置，检查页脚处是否有正在加载的标志。如果超过一定时间没有出现，则说明已经加载完了。
-
-        WebElement loading = driver.findElement(By.id("pull-load")); //加载提示信息
-        WebElement footer = driver.findElement(By.className("footer"));//页脚，定位用
-
-        boolean isLoading = true;//是否正在加载
-        long lastChange = System.currentTimeMillis();//设置上次获取到加载标志的时间
-
-        while(isLoading){
-            String style = loading.getAttribute("style");
-            if(!style.equals("display: none;")){
-                lastChange = System.currentTimeMillis();//设置上次获取到加载标志的时间
-            }
-            //判断距离上次获取到加载标志是否经过了足够长的时间
-            if(System.currentTimeMillis() - lastChange > 500){
-                isLoading = false;
-            }
-            //滚动页面至底部
-            int deltaY = footer.getRect().y;
-            new Actions(driver)
-                    .scrollByAmount(0, deltaY)
-                    .perform();
-        }
-
-        //获取图片链接
-        LinkedHashMap<String, String> linkAndImages = new LinkedHashMap<>();
-        WebElement imgContent = driver.findElement(By.className("img-content"));
-        List<WebElement> imgs = imgContent.findElements(By.cssSelector("img"));
-        for (WebElement img : imgs) {
-            String src = img.getAttribute("src");
-            int i;
-            for(i = src.length() - 1;i >= 0;i --){
-                if(src.charAt(i) == '/')break;
-            }
-            String imgName = src.substring(i + 1);
-            linkAndImages.put(src,imgName);
-        }
-
-        //归还driver
-        pool.returnObject(driver);
-        return linkAndImages;
-    }
+//    @Override
+//    public LinkedHashMap<String, String> getImages(String url) {
+//        //从池中获取驱动，根据输入结果查询
+//        GenericObjectPool<WebDriver> pool = WebDriverPoolConfig.getPool();
+//        WebDriver driver = null;
+//        try {
+//            driver = pool.borrowObject();
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//            return null;
+//        }
+//
+//        driver.get(url);
+//        //点击下拉式按钮
+//        driver.findElement(By.className("btn-def")).click();
+//
+//        //获取页脚位置，检查页脚处是否有正在加载的标志。如果超过一定时间没有出现，则说明已经加载完了。
+//
+//        WebElement loading = driver.findElement(By.id("pull-load")); //加载提示信息
+//        WebElement footer = driver.findElement(By.className("footer"));//页脚，定位用
+//
+//        boolean isLoading = true;//是否正在加载
+//        long lastChange = System.currentTimeMillis();//设置上次获取到加载标志的时间
+//
+//        while(isLoading){
+//            String style = loading.getAttribute("style");
+//            if(!style.equals("display: none;")){
+//                lastChange = System.currentTimeMillis();//设置上次获取到加载标志的时间
+//            }
+//            //判断距离上次获取到加载标志是否经过了足够长的时间
+//            if(System.currentTimeMillis() - lastChange > 500){
+//                isLoading = false;
+//            }
+//            //滚动页面至底部
+//            int deltaY = footer.getRect().y;
+//            new Actions(driver)
+//                    .scrollByAmount(0, deltaY)
+//                    .perform();
+//        }
+//
+//        //获取图片链接
+//        LinkedHashMap<String, String> linkAndImages = new LinkedHashMap<>();
+//        WebElement imgContent = driver.findElement(By.className("img-content"));
+//        List<WebElement> imgs = imgContent.findElements(By.cssSelector("img"));
+//        for (WebElement img : imgs) {
+//            String src = img.getAttribute("src");
+//            int i;
+//            for(i = src.length() - 1;i >= 0;i --){
+//                if(src.charAt(i) == '/')break;
+//            }
+//            String imgName = src.substring(i + 1);
+//            linkAndImages.put(src,imgName);
+//        }
+//
+//        //归还driver
+//        pool.returnObject(driver);
+//        return linkAndImages;
+//    }
 
 
 }

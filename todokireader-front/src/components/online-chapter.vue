@@ -3,10 +3,13 @@
     <div class="container">
       <!-- 上部标签 -->
       <article class="info-cart">
+        <!-- 封面 -->
         <div class="cover">
           <img :src="menuInfo.coverUrl" alt="" />
         </div>
+        <!-- 信息 -->
         <div class="info">
+          <!-- 标题 -->
           <table>
             <thead>
               <tr>
@@ -14,6 +17,8 @@
               </tr>
             </thead>
           </table>
+
+          <!-- 漫画信息 -->
           <table role="grid">
             <tbody>
               <tr>
@@ -30,6 +35,8 @@
               </tr>
             </tbody>
           </table>
+
+          <!-- 下载按钮 -->
         </div>
       </article>
 
@@ -79,7 +86,6 @@ export default {
 
     toOnlineRead(url, chapter) {
       var _this = this;
-      console.log(chapter);
       this.$router.push({
         path: "/onlineRead",
         name: "onlineReadPage",
@@ -96,7 +102,7 @@ export default {
     return {
       url: "",
       sourceName: "",
-      menuInfo: [],
+      menuInfo: {},
     };
   },
   created() {
@@ -108,7 +114,7 @@ export default {
   },
   //判定是否进行了路由切换，如果切换了就重新更新一下页面
   watch: {
-    "$route.params.url": {
+    "$route.params.sourceName": {
       handler(newVal) {
         if (newVal != undefined) {
           this.url = this.$route.params.url;

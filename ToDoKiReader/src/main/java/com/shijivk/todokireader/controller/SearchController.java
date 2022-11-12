@@ -1,22 +1,31 @@
 package com.shijivk.todokireader.controller;
 
 import com.alibaba.fastjson2.JSONObject;
+import com.shijivk.todokireader.config.CacheLoader;
 import com.shijivk.todokireader.config.MQCode;
 import com.shijivk.todokireader.config.SourceProps;
-import com.shijivk.todokireader.pojo.CacheInfo;
 import com.shijivk.todokireader.pojo.Result;
 import com.shijivk.todokireader.pojo.Source;
 import com.shijivk.todokireader.source.MangaSource;
 import com.shijivk.todokireader.utils.PathUtil;
+import javafx.util.Pair;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.io.IOUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.ServletOutputStream;
+import javax.servlet.http.HttpServletResponse;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @RestController
 public class SearchController{
@@ -28,17 +37,10 @@ public class SearchController{
     @Value("${cachePath}")
     private String cachePath;
 
+    //controller和source之间的消息队列，用来传递例如下载开始，下载超时，下载结束之类的消息
+    private static final Map<String, Integer> messageQueue = new ConcurrentHashMap<>();
 
-    //controller和source之间的消息队列，用来确认图片是否下载完成
-    private static final Map<String, CacheInfo> messageQueue = new ConcurrentHashMap<>();
-    //存储title和int之间的映射关系
-    private static final Map<Integer,String> titleMap = new ConcurrentHashMap<>();
-    //存储chapter和int之间的映射关系
-    private static final Map<Integer,String> chapterMap = new ConcurrentHashMap<>();
-    //存储缓存中title的序号
-    private static final AtomicInteger titleNumber = new AtomicInteger(100);
-    //存储缓存中chapter的序号
-    private static final AtomicInteger chapterNumber = new AtomicInteger(100);
+
 
     @GetMapping("/api/sources")
     public Result sources(){
@@ -46,15 +48,6 @@ public class SearchController{
         return Result.success(sourceList);
     }
 
-    @GetMapping("/api/debug")
-    public Result debug(){
-        System.out.println(messageQueue.toString());
-        System.out.println(titleMap);
-        System.out.println(chapterMap.toString());
-        System.out.println(titleNumber);
-        System.out.println(chapterNumber);
-        return null;
-    }
 
     //search/maoFly/邻家
     //        采用Spring容器的方式配置source
@@ -65,14 +58,14 @@ public class SearchController{
     //        }else{
     //            return Result.fail("获取错误，请检查参数是否正确");
     //        }
-    @GetMapping("/api/search/{sourceName}/{keyWord}")
-    public Result onlineSearch(@PathVariable("sourceName") String sourceName, @PathVariable("keyWord") String keyWord){
+    @GetMapping("/api/search/{sourceName}/{keyWord}/{pageNumber}")
+    public Result onlineSearch(@PathVariable("sourceName") String sourceName, @PathVariable("keyWord") String keyWord,@PathVariable("pageNumber") Integer pageNumber){
         //采用反射的方式来创建源对象
         Class<?> sourceClass = this.sourceProps.getSourceClass(sourceName);
         if(sourceClass == null)return Result.fail("获取类对象失败");
         try {
             MangaSource source = (MangaSource) sourceClass.newInstance();
-            return Result.success(source.search(keyWord));
+            return Result.success(source.search(keyWord,pageNumber));
         } catch (InstantiationException | IllegalAccessException e) {
             e.printStackTrace();
         }
@@ -96,92 +89,158 @@ public class SearchController{
 
     @PostMapping("/api/amountOfImages")
     public Result amountOfImages(@RequestBody JSONObject params){
+        System.out.println("============================" + params+"============================");
+
         //获取标题、章节名称和url
         String title = params.getString("title");
         String chapter = params.getString("chapter");
         String url = params.getString("url");
         String sourceName = params.getString("sourceName");
 
-        //存储title,chapter和Integer的映射关系
-        int currentTitleNumber = titleNumber.getAndIncrement();
-        int currentChapterNumber = chapterNumber.getAndIncrement();
-        titleMap.put(currentTitleNumber,title);
-        chapterMap.put(currentChapterNumber,chapter);
+        int currentTitleNumber = CacheLoader.getTitleNum(title);
+        int currentChapterNumber = CacheLoader.getChapterNum(chapter);
 
-        Class<?> sourceClass = this.sourceProps.getSourceClass(sourceName);
-        if(sourceClass == null)return Result.fail("获取类对象失败");
-
-        try {
-            MangaSource source = (MangaSource) sourceClass.newInstance();
-            int amount = source.getAmountAndStartDownload(messageQueue, url, this.cachePath, currentTitleNumber, currentChapterNumber);
+        //缓存操作
+        //查找map中是否已经有了该标题和章节的缓存，如果有可以直接返回
+        if((currentTitleNumber != -1) && (currentChapterNumber != -1)){//标题和章节都有
+            //拿到数量
+            //获取文件夹下的所有图片（便于拿到扩展名），及图片的数量
+            Collection<File> images = FileUtils.listFiles(new File(cachePath + File.separator + title + File.separator + chapter), null, true);
+            int amount = images.size();
+            int i = 0;
+            //随便取一个图片，拿到扩展名
+            String fileExtension = null;
+            for (File image : images) {
+                if(i++ >= 1)break;
+                fileExtension = FilenameUtils.getExtension(image.getPath());
+            }
+            //返回结果
             JSONObject result = new JSONObject();
             result.put("amount",amount);
             result.put("titleNumber",currentTitleNumber);
             result.put("chapterNumber",currentChapterNumber);
+            result.put("fileExtension",fileExtension);
+            return Result.success(result);
+        }else if(currentTitleNumber != -1){
+            //有标题，没有章节
+            //缓存章节的对应关系
+            currentChapterNumber = CacheLoader.setNewChapter(title + "\\" +chapter);
+        }else{
+            //标题和章节都没有
+            //存储title,chapter和Integer的映射关系
+            currentTitleNumber = CacheLoader.setNewTitle(title);
+            currentChapterNumber = CacheLoader.setNewChapter(title + "\\" +chapter);
+        }
+
+
+        Class<?> sourceClass = this.sourceProps.getSourceClass(sourceName);
+        if(sourceClass == null)return Result.fail("获取类对象失败");
+
+
+        try {
+            MangaSource source = (MangaSource) sourceClass.newInstance();
+            Pair<Integer, String> pair = source.getAmountAndStartDownload(messageQueue, url, this.cachePath, title, chapter);
+            Integer amount = pair.getKey();
+            String fileExtension = pair.getValue();
+
+            JSONObject result = new JSONObject();
+            result.put("amount",amount);
+            result.put("titleNumber",currentTitleNumber);
+            result.put("chapterNumber",currentChapterNumber);
+            result.put("fileExtension",fileExtension);
             return Result.success(result);
         } catch (InstantiationException | IllegalAccessException e) {
             e.printStackTrace();
         }
         return Result.fail("获取错误，请检查参数是否正确");
+
     }
 
-    @GetMapping("/api/checkImgStatus/{titleNum}/{chapterNum}/{imgNum}")
+    @GetMapping("/api/checkImgStatus/{titleNum}/{chapterNum}/{imgName}")
     //前端查询缓存中是否已经缓存好了该图片，或者在未知数量时，是否存在该图片。
     public Result checkImgStatus(@PathVariable("titleNum")Integer titleNum,
                                  @PathVariable("chapterNum") Integer chapterNum,
-                                 @PathVariable("imgNum") Integer imgNum){
+                                 @PathVariable("imgName") String imgName){
+        //查看本地缓存中是否有该图片，如果有直接返回
+        if(CacheLoader.hasCache(titleNum, chapterNum, imgName)){
+            JSONObject result = new JSONObject();
+            result.put("code",MQCode.IMG_GET_OK);
+            return Result.success(result);
+        }
+
+        //本地缓存中没有，等待消息队列
+        Integer status = messageQueue.get(CacheLoader.getTitle(titleNum) + File.separator + CacheLoader.getChapter(chapterNum) + File.separator + FilenameUtils.getBaseName(imgName));
         long startWaitingTime = System.currentTimeMillis();
-        CacheInfo cacheInfo = messageQueue.get(PathUtil.getPathKey(titleNum, chapterNum, imgNum));
-        while(cacheInfo==null){
+        while(status==null){
             try {
                 //等待十秒
-                if (System.currentTimeMillis() - startWaitingTime > 10000){
+                if (System.currentTimeMillis() - startWaitingTime > 10000){//过了十秒，超时
                     //虽然请求失败了，但是为了将参数写在data里面，用success返回
                     JSONObject overTimeResult = new JSONObject();
                     overTimeResult.put("code",MQCode.IMG_GET_OVERTIME);
-                    overTimeResult.put("fileExtension","");//超时的情况扩展名留空
                     return Result.success(overTimeResult);
                 }
                 TimeUnit.MILLISECONDS.sleep(100);
-                cacheInfo = messageQueue.get(PathUtil.getPathKey(titleNum, chapterNum, imgNum));
+
+                status = messageQueue.get(CacheLoader.getTitle(titleNum) + File.separator + CacheLoader.getChapter(chapterNum) + File.separator + FilenameUtils.getBaseName(imgName));
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
 
         //如果缓存map中，值为成功则返回ok，否则返回章节结束
-        if(cacheInfo.getStatusCode().equals(MQCode.IMG_GET_OK)){
-            //返回成功的code和文件扩展名
+        if(status.equals(MQCode.IMG_GET_OK)){
+            //返回成功的code
             JSONObject successResult = new JSONObject();
             successResult.put("code",MQCode.IMG_GET_OK);
-            successResult.put("fileExtension",cacheInfo.getFileExtension());
             return Result.success(successResult);
 
-        }else if (cacheInfo.getStatusCode().equals(MQCode.CHAPTER_OVER)){
+        }else if (status.equals(MQCode.CHAPTER_OVER)){
             //返回章节结束的code，扩展名留空
             JSONObject successResult = new JSONObject();
             successResult.put("code",MQCode.CHAPTER_OVER);
-            successResult.put("fileExtension","");
             return Result.success(successResult);
         }
         return null;
     }
 
+    @GetMapping("/temp/{titleNum}/{chapterNum}/{imageName}")
+    public void getImage(@PathVariable("titleNum") Integer titleNum,
+                           @PathVariable("chapterNum") Integer chapterNum,
+                           @PathVariable("imageName") String imageName,
+                           HttpServletResponse response){
+        String title = CacheLoader.getTitle(titleNum);
+        String chapter = CacheLoader.getChapter(chapterNum);
 
-
-    //暂时用不到的方法
-    @PostMapping("/api/images")
-    public Result images(@RequestBody JSONObject params){
-        //采用反射的方式来创建源对象
-        Class<?> sourceClass = this.sourceProps.getSourceClass(params.getString("sourceName"));
-        if(sourceClass == null)return Result.fail("获取类对象失败");
+        File image = new File(cachePath + File.separator + title +
+                                File.separator + chapter + File.separator + imageName);
+        //字节流形式读取图片
+        FileInputStream fis = null;
         try {
-            MangaSource source = (MangaSource) sourceClass.newInstance();
-            return Result.success(source.getImages(params.getString("url")));
-        } catch (InstantiationException | IllegalAccessException e) {
+            fis = new FileInputStream(image);
+            ServletOutputStream outputStream = response.getOutputStream();
+            IOUtils.copy(fis,outputStream);
+        } catch (IOException e) {
             e.printStackTrace();
         }
-        return Result.fail("获取错误，请检查参数是否正确");
+
     }
+
+
+
+//    //暂时用不到的方法
+//    @PostMapping("/api/images")
+//    public Result images(@RequestBody JSONObject params){
+//        //采用反射的方式来创建源对象
+//        Class<?> sourceClass = this.sourceProps.getSourceClass(params.getString("sourceName"));
+//        if(sourceClass == null)return Result.fail("获取类对象失败");
+//        try {
+//            MangaSource source = (MangaSource) sourceClass.newInstance();
+//            return Result.success(source.getImages(params.getString("url")));
+//        } catch (InstantiationException | IllegalAccessException e) {
+//            e.printStackTrace();
+//        }
+//        return Result.fail("获取错误，请检查参数是否正确");
+//    }
 
 }

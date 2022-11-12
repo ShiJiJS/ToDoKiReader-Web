@@ -1,38 +1,24 @@
 package com.shijivk.todokireader;
 
-import org.apache.commons.io.FileUtils;
+
+
+import com.shijivk.todokireader.pojo.Menu;
+import com.shijivk.todokireader.source.CopyManga;
 import org.apache.commons.io.FilenameUtils;
-import org.jsoup.Connection;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
-import java.net.*;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
+
 
 public class Test {
     public static void main(String[] args) throws IOException {
-        TestYaml testYaml = new TestYaml();
-        testYaml.test();
+        String a = "《关于邻家的天使大人不知不觉把我惯成了废人这件事》\\第1.2话";
+
+        int i = FilenameUtils.indexOfLastSeparator(a);
+        System.out.println(a.substring(i + 1));
+
+
     }
 
 }
 
 
-class TestYaml{
-    public void test(){
-        Yaml yaml = new Yaml();
-        InputStream stream = this.getClass().getClassLoader().getResourceAsStream("application.yaml");
-
-        Map<String, Object> ret = yaml.load(stream);
-        String classPath = (String)ret.get("cachePath");
-        System.out.println(ret);
-        System.out.println(classPath);
-    }
-}
